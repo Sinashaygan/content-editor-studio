@@ -1,5 +1,5 @@
 export const documentKeys = {
   all: ["documents"] as const,
-  lists: ["documents", "list"] as const,
+  lists:()=> ["documents", "list"] as const,
   detail: (id: string) => [...documentKeys.all, "detail", id] as const,
 };
