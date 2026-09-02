@@ -46,6 +46,12 @@ export function CreateDocumentSection() {
             {createMutation.isPending ? "Creating..." : "Create Document"}
           </Button>
         </form>
+        {createMutation.error && (
+          <p className="mt-3 text-sm text-red-600" role="alert">
+            Failed to create document:{" "}
+            {(createMutation.error as Error).message}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

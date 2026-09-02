@@ -1,4 +1,4 @@
-import { Database,Json } from "@/shared/types/database";
+import { Database, Json } from "@/shared/types/database";
 import { Document, TiptapContent } from "../model/types";
 import { supabase } from "@/shared/api/supabase";
 
@@ -37,7 +37,7 @@ export const documentService = {
       .order("updated_at", { ascending: false });
 
     if (error) throw new Error(error.message);
-    return data.map(mapRowToDocument);
+    return (data ?? []).map(mapRowToDocument);
   },
 
   async create(
