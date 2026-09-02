@@ -34,13 +34,13 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     immediatelyRender: false,
   });
 
-//   useEffect(() => {
-//     if (editor && initialDocument.content) {
-//       editor.commands.setContent(initialDocument.content);
-//       setCurrentVersion(initialDocument.version);
-//       setTitle(initialDocument.title);
-//     }
-//   }, [editor, initialDocument.id]);
+  //   useEffect(() => {
+  //     if (editor && initialDocument.content) {
+  //       editor.commands.setContent(initialDocument.content);
+  //       setCurrentVersion(initialDocument.version);
+  //       setTitle(initialDocument.title);
+  //     }
+  //   }, [editor, initialDocument.id]);
 
   const handleSave = async () => {
     if (!editor) return;
@@ -114,7 +114,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
         </div>
       </div>
 
-      <div className="border rounded-lg min-h-[450px] p-6 shadow-sm bg-white focus-within:ring-1 focus-within:ring-neutral-400">
+      <div className="min-h-[450px] rounded-lg border bg-white p-6 shadow-sm focus-within:ring-1 focus-within:ring-neutral-400">
         <EditorContent
           editor={editor}
           className="prose max-w-none focus:outline-none"
