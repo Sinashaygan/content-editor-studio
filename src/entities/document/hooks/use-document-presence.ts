@@ -28,4 +28,30 @@ function colorFromId(userId: string) {
   return `hsl(${Math.abs(hash) % 360} 70% 45%)`;
 }
 
+function getOrCreatePresenceUser(): StoredPresenceUser {
+  const storedUser = sessionStorage.getItem(STORAGE_KEY);
+
+  if (storedUser) {
+    try {
+      const parsed = JSON.parse(storedUser) as StoredPresenceUser;
+
+      if (parsed.userId && parsed.userName && parsed.color) {
+        return parsed;
+      }
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  const userId = crypto.randomUUID();
+  const user = {
+    userId,
+    userName: `Guest ${userId.slice(0, 4).toUpperCase()}`,
+    color: colorFromId(userId),
+  };
+
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  return user;
+}
+
 
