@@ -13,15 +13,15 @@ interface EditorCanvasProps {
   initialDocument: Document;
 }
 
+type SaveStatus = "idle" | "saving" | "auto-saving" | "saved" | "error";
+
 export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const [title, setTitle] = useState(initialDocument.title);
   const [currentVersion, setCurrentVersion] = useState(initialDocument.version);
   const [conflictError, setConflictError] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
-  const updateMutation = useUpdateDocument();
+  const { mutateAsync: updateDocument, isPending } = useUpdateDocument();
 
   const editor = useEditor({
     extensions: [
@@ -51,7 +51,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     const contentJSON = editor.getJSON() as TiptapContent;
 
     try {
-      const result = await updateMutation.mutateAsync({
+      const result = await updateDocument({
         id: initialDocument.id,
         expectedVersion: currentVersion,
         updates: {
@@ -104,8 +104,8 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           <span className="text-xs text-neutral-500 font-mono">
             v{currentVersion}
           </span>
-          <Button onClick={handleSave} disabled={updateMutation.isPending}>
-            {updateMutation.isPending
+          <Button onClick={handleSave} disabled={isPending}>
+            {isPending
               ? "Saving..."
               : saveStatus === "saved"
                 ? "Saved ✓"
