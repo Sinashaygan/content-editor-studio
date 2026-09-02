@@ -3,7 +3,7 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Document, TiptapContent } from "@/entities/document/model/types";
@@ -34,13 +34,51 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     immediatelyRender: false,
   });
 
-  //   useEffect(() => {
-  //     if (editor && initialDocument.content) {
-  //       editor.commands.setContent(initialDocument.content);
-  //       setCurrentVersion(initialDocument.version);
-  //       setTitle(initialDocument.title);
-  //     }
-  //   }, [editor, initialDocument.id]);
+  useEffect(() => {
+    if (!editor || saveStatus === "saving" || saveStatus === "auto-saving")
+      return;
+    const content = editor.getJSON();
+    const hasChanged =
+      title !== initialDocument.title ||
+      JSON.stringify(content) !== JSON.stringify(initialDocument.content);
+
+    if (!hasChanged) return;
+
+    const timer = setTimeout(async () => {
+      setSaveStatus("auto-saving");
+      setConflictError(null);
+
+      try {
+        const updated = await updateDocument({
+          id: initialDocument.id,
+          expectedVersion: currentVersion,
+          updates: { title, content },
+        });
+
+        setCurrentVersion(updated.version);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2000);
+      } catch (err: any) {
+        if (err.type === "version_mismatch") {
+          setConflictError(
+            `Conflict detected! Server is at v${err.serverVersion}, you have v${currentVersion}.`,
+          );
+          setSaveStatus("error");
+        } else {
+          setSaveStatus("error");
+        }
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [
+    title,
+    editor?.getJSON(),
+    currentVersion,
+    saveStatus,
+    updateDocument,
+    initialDocument,
+  ]);
 
   const handleSave = async () => {
     if (!editor) return;
