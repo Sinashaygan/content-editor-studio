@@ -1,27 +1,68 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useEffect, useState } from "react";
+import StarterKit from "@tiptap/starter-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Document, TiptapContent } from "@/entities/document/model/types";
+import { useDocumentPresence } from "@/entities/document/hooks/use-document-presence";
 import { useUpdateDocument } from "@/entities/document/hooks/use-update-document";
+import type {
+  Document,
+  TiptapContent,
+} from "@/entities/document/model/types";
+import { PresenceAvatars } from "./presence-avatars";
 
 interface EditorCanvasProps {
   initialDocument: Document;
 }
 
+type SaveMode = "manual" | "auto";
 type SaveStatus = "idle" | "saving" | "auto-saving" | "saved" | "error";
+
+interface SavedSnapshot {
+  title: string;
+  serializedContent: string;
+}
+
+const AUTOSAVE_DELAY = 2_000;
+const SAVED_STATUS_DURATION = 2_500;
 
 export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const [title, setTitle] = useState(initialDocument.title);
-  const [currentVersion, setCurrentVersion] = useState(initialDocument.version);
+  const [content, setContent] = useState<TiptapContent>(
+    initialDocument.content,
+  );
+  const [currentVersion, setCurrentVersion] = useState(
+    initialDocument.version,
+  );
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<SavedSnapshot>({
+    title: initialDocument.title,
+    serializedContent: JSON.stringify(initialDocument.content),
+  });
 
-  const { mutateAsync: updateDocument, isPending } = useUpdateDocument();
+  const titleRef = useRef(initialDocument.title);
+  const serializedContentRef = useRef(
+    JSON.stringify(initialDocument.content),
+  );
+  const lastSavedRef = useRef<SavedSnapshot>({
+    title: initialDocument.title,
+    serializedContent: JSON.stringify(initialDocument.content),
+  });
+  const versionRef = useRef(initialDocument.version);
+  const saveInFlightRef = useRef(false);
+  const queuedManualSaveRef = useRef(false);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const { mutateAsync: updateDocument } = useUpdateDocument();
+  const { onlineUsers, isConnected } = useDocumentPresence(
+    initialDocument.id,
+  );
 
   const editor = useEditor({
     extensions: [
@@ -32,105 +73,192 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     ],
     content: initialDocument.content,
     immediatelyRender: false,
+    onUpdate: ({ editor: currentEditor }) => {
+      const nextContent = currentEditor.getJSON() as TiptapContent;
+      serializedContentRef.current = JSON.stringify(nextContent);
+      setContent(nextContent);
+      setSaveStatus((status) => (status === "error" ? status : "idle"));
+    },
   });
 
-  useEffect(() => {
-    if (!editor || saveStatus === "saving" || saveStatus === "auto-saving")
-      return;
-    const content = editor.getJSON();
-    const hasChanged =
-      title !== initialDocument.title ||
-      JSON.stringify(content) !== JSON.stringify(initialDocument.content);
+  const serializedContent = useMemo(() => JSON.stringify(content), [content]);
+  const isDirty = useMemo(
+    () =>
+      title !== lastSavedSnapshot.title ||
+      serializedContent !== lastSavedSnapshot.serializedContent,
+    [lastSavedSnapshot, serializedContent, title],
+  );
 
-    if (!hasChanged) return;
+  const clearSavedStatusTimer = useCallback(() => {
+    if (savedStatusTimerRef.current) {
+      clearTimeout(savedStatusTimerRef.current);
+      savedStatusTimerRef.current = null;
+    }
+  }, []);
 
-    const timer = setTimeout(async () => {
-      setSaveStatus("auto-saving");
-      setConflictError(null);
+  const showSavedStatus = useCallback(() => {
+    clearSavedStatusTimer();
+    setSaveStatus("saved");
+    savedStatusTimerRef.current = setTimeout(() => {
+      setSaveStatus("idle");
+      savedStatusTimerRef.current = null;
+    }, SAVED_STATUS_DURATION);
+  }, [clearSavedStatusTimer]);
+
+  const performSave = useCallback(
+    async (mode: SaveMode) => {
+      if (saveInFlightRef.current) {
+        if (mode === "manual") {
+          queuedManualSaveRef.current = true;
+        }
+        return;
+      }
+
+      saveInFlightRef.current = true;
 
       try {
-        const updated = await updateDocument({
-          id: initialDocument.id,
-          expectedVersion: currentVersion,
-          updates: { title, content },
-        });
+        let nextMode: SaveMode | null = mode;
 
-        setCurrentVersion(updated.version);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 2000);
-      } catch (err: any) {
-        if (err.type === "version_mismatch") {
-          setConflictError(
-            `Conflict detected! Server is at v${err.serverVersion}, you have v${currentVersion}.`,
+        while (nextMode) {
+          const snapshot: SavedSnapshot = {
+            title: titleRef.current,
+            serializedContent: serializedContentRef.current,
+          };
+
+          if (
+            snapshot.title === lastSavedRef.current.title &&
+            snapshot.serializedContent ===
+              lastSavedRef.current.serializedContent
+          ) {
+            showSavedStatus();
+            break;
+          }
+
+          clearSavedStatusTimer();
+          setConflictError(null);
+          setSaveStatus(
+            nextMode === "manual" ? "saving" : "auto-saving",
           );
-          setSaveStatus("error");
-        } else {
-          setSaveStatus("error");
+          queuedManualSaveRef.current = false;
+
+          const result = await updateDocument({
+            id: initialDocument.id,
+            expectedVersion: versionRef.current,
+            updates: {
+              title: snapshot.title,
+              content: JSON.parse(
+                snapshot.serializedContent,
+              ) as TiptapContent,
+            },
+          });
+
+          if (!result.success) {
+            const serverVersion = result.currentDoc?.version;
+            setConflictError(
+              serverVersion
+                ? `Version conflict detected! The server is at v${serverVersion}, while this editor is based on v${versionRef.current}. Reload the server version before continuing.`
+                : "Version conflict detected! This document may have been deleted or updated elsewhere.",
+            );
+            setSaveStatus("error");
+            break;
+          }
+
+          versionRef.current = result.data.version;
+          lastSavedRef.current = snapshot;
+          setCurrentVersion(result.data.version);
+          setLastSavedSnapshot(snapshot);
+          showSavedStatus();
+
+          nextMode = queuedManualSaveRef.current ? "manual" : null;
         }
-      }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [
-    title,
-    editor?.getJSON(),
-    currentVersion,
-    saveStatus,
-    updateDocument,
-    initialDocument,
-  ]);
-
-  const handleSave = async () => {
-    if (!editor) return;
-
-    setSaveStatus("saving");
-    setConflictError(null);
-
-    const contentJSON = editor.getJSON() as TiptapContent;
-
-    try {
-      const result = await updateDocument({
-        id: initialDocument.id,
-        expectedVersion: currentVersion,
-        updates: {
-          title,
-          content: contentJSON,
-        },
-      });
-
-      if (result.success) {
-        setCurrentVersion(result.data.version);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 2500);
-      } else if (result.conflict) {
+      } catch (error) {
         setSaveStatus("error");
         setConflictError(
-          `Version conflict detected! Someone else updated this document to v${result.currentDoc?.version}. Please review before overwriting.`,
+          error instanceof Error ? error.message : "Failed to save changes.",
         );
+      } finally {
+        saveInFlightRef.current = false;
       }
-    } catch (err) {
-      setSaveStatus("error");
-      setConflictError((err as Error).message || "Failed to save changes");
-    }
-  };
+    },
+    [
+      clearSavedStatusTimer,
+      initialDocument.id,
+      showSavedStatus,
+      updateDocument,
+    ],
+  );
 
-  const statusLabels: Record<SaveStatus, string> = {
-    idle: "Unsaved changes",
-    saving: "Saving...",
-    "auto-saving": "Auto-saving...",
-    saved: "All changes saved",
-    error: "Save failed",
-  };
+  useEffect(() => {
+    if (!isDirty || conflictError || saveInFlightRef.current) return;
+
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void performSave("auto");
+    }, AUTOSAVE_DELAY);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [conflictError, isDirty, performSave]);
+
+  useEffect(
+    () => () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      clearSavedStatusTimer();
+    },
+    [clearSavedStatusTimer],
+  );
+
+  const handleTitleChange = useCallback(
+    (nextTitle: string) => {
+      titleRef.current = nextTitle;
+      setTitle(nextTitle);
+      if (!conflictError) {
+        setSaveStatus("idle");
+      }
+    },
+    [conflictError],
+  );
+
+  const handleManualSave = useCallback(() => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+
+    void performSave("manual");
+  }, [performSave]);
+
+  const statusLabel = useMemo(() => {
+    const labels: Record<SaveStatus, string> = {
+      idle: isDirty ? "Unsaved changes" : "All changes saved",
+      saving: "Saving...",
+      "auto-saving": "Auto-saving...",
+      saved: "Saved",
+      error: "Save failed",
+    };
+
+    return labels[saveStatus];
+  }, [isDirty, saveStatus]);
 
   return (
     <div className="space-y-4">
       {conflictError && (
-        <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg text-amber-900 text-sm flex items-center justify-between">
-          <span>⚠️ {conflictError}</span>
+        <div
+          className="flex items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+          role="alert"
+        >
+          <span>{conflictError}</span>
           <Button
+            type="button"
             size="sm"
             variant="outline"
-            className="bg-white"
+            className="shrink-0 bg-white"
             onClick={() => window.location.reload()}
           >
             Reload Server Version
@@ -138,25 +266,46 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4 pb-4 border-b">
+      <div className="flex flex-col justify-between gap-4 border-b pb-4 sm:flex-row sm:items-center">
         <Input
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="text-xl font-bold max-w-lg"
+          onChange={(event) => handleTitleChange(event.target.value)}
+          className="max-w-lg text-xl font-bold"
           placeholder="Untitled"
+          aria-label="Document title"
         />
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-neutral-500 font-mono">
-            v{currentVersion}
-          </span>
-          <Button onClick={handleSave} disabled={isPending}>
-            {isPending
-              ? "Saving..."
-              : saveStatus === "saved"
-                ? "Saved ✓"
-                : "Save Changes"}
-          </Button>
+        <div className="flex items-center justify-between gap-4 sm:justify-end">
+          <PresenceAvatars
+            users={onlineUsers}
+            isConnected={isConnected}
+          />
+
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="font-mono text-xs text-neutral-500">
+                v{currentVersion}
+              </p>
+              <p
+                className={`text-xs ${
+                  saveStatus === "error"
+                    ? "text-red-600"
+                    : "text-neutral-500"
+                }`}
+                aria-live="polite"
+              >
+                {statusLabel}
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              onClick={handleManualSave}
+              disabled={!editor || saveStatus === "saving"}
+            >
+              {saveStatus === "saving" ? "Saving..." : "Save"}
+            </Button>
+          </div>
         </div>
       </div>
 
