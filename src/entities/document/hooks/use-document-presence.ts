@@ -54,4 +54,64 @@ function getOrCreatePresenceUser(): StoredPresenceUser {
   return user;
 }
 
+export function useDocumentPresence(documentId: string) {
+  const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
 
+  useEffect(() => {
+    if (!documentId) return;
+
+    const currentUser = getOrCreatePresenceUser();
+    const channel = supabase.channel(`document:${documentId}`, {
+      config: {
+        presence: { key: currentUser.userId },
+      },
+    });
+
+    const syncPresence = () => {
+      const presenceState = channel.presenceState<PresenceUser>();
+      const uniqueUsers = new Map<string, PresenceUser>();
+
+      for (const presence of Object.values(presenceState).flat()) {
+        if (presence.userId) {
+          uniqueUsers.set(presence.userId, {
+            userId: presence.userId,
+            userName: presence.userName,
+            color: presence.color,
+            lastSeen: presence.lastSeen,
+          });
+        }
+      }
+
+      setOnlineUsers(
+        [...uniqueUsers.values()].sort((a, b) =>
+          a.userName.localeCompare(b.userName),
+        ),
+      );
+    };
+
+    channel
+      .on("presence", { event: "sync" }, syncPresence)
+      .on("presence", { event: "join" }, syncPresence)
+      .on("presence", { event: "leave" }, syncPresence)
+      .subscribe((status) => {
+        setIsConnected(status === "SUBSCRIBED");
+
+        if (status === "SUBSCRIBED") {
+          void channel.track({
+            ...currentUser,
+            lastSeen: Date.now(),
+          });
+        }
+      });
+
+    return () => {
+      setIsConnected(false);
+      setOnlineUsers([]);
+      void channel.untrack();
+      void supabase.removeChannel(channel);
+    };
+  }, [documentId]);
+
+  return { onlineUsers, isConnected };
+}
