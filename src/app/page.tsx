@@ -36,7 +36,7 @@ export default function HomePage() {
 
         {documents && documents.length === 0 && (
           <p className="text-neutral-400">
-            No documents found. Create your first document above.
+            No documents yet. Create your first document above.
           </p>
         )}
 
