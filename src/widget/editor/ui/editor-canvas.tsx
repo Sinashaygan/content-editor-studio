@@ -114,6 +114,14 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     }
   };
 
+  const statusLabels: Record<SaveStatus, string> = {
+    idle: "Unsaved changes",
+    saving: "Saving...",
+    "auto-saving": "Auto-saving...",
+    saved: "All changes saved",
+    error: "Save failed",
+  };
+
   return (
     <div className="space-y-4">
       {conflictError && (
