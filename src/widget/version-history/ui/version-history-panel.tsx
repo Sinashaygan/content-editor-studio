@@ -40,12 +40,20 @@ export function VersionHistoryPanel({
     });
 
     if (!result.success) {
-      const serverVersion = result.currentDoc?.version;
-      setConflictMessage(
-        serverVersion !== undefined
-          ? `Document on the server is at version ${serverVersion}. Please refresh the page first.`
-          : "Version conflict detected. Please refresh the page.",
-      );
+      if (result.conflict) {
+        const serverVersion = result.currentDoc?.version;
+        setConflictMessage(
+          serverVersion !== undefined
+            ? `Document on the server is at version ${serverVersion}. Please refresh the page first.`
+            : "Version conflict detected. Please refresh the page.",
+        );
+      } else if (result.forbidden) {
+        setConflictMessage(
+          "You do not have permission to restore this document, or it no longer exists.",
+        );
+      } else {
+        setConflictMessage(result.error);
+      }
       return;
     }
 
