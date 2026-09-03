@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/shared/api/supabase";
+import { useSession } from "@/entities/session/hooks/use-session";
 
 export interface PresenceUser {
   userId: string;
@@ -10,61 +11,36 @@ export interface PresenceUser {
   lastSeen: number;
 }
 
-interface StoredPresenceUser {
-  userId: string;
-  userName: string;
-  color: string;
-}
-
-const STORAGE_KEY = "content-editor-presence-user";
-
-function colorFromId(userId: string) {
+/**
+ * تولید یک رنگ HSL پایدار بر اساس شناسه کاربری
+ */
+function colorFromId(userId: string): string {
   let hash = 0;
-
-  for (const character of userId) {
-    hash = character.charCodeAt(0) + ((hash << 5) - hash);
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
   }
-
   return `hsl(${Math.abs(hash) % 360} 70% 45%)`;
 }
 
-function getOrCreatePresenceUser(): StoredPresenceUser {
-  const storedUser = sessionStorage.getItem(STORAGE_KEY);
-
-  if (storedUser) {
-    try {
-      const parsed = JSON.parse(storedUser) as StoredPresenceUser;
-
-      if (parsed.userId && parsed.userName && parsed.color) {
-        return parsed;
-      }
-    } catch {
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  }
-
-  const userId = crypto.randomUUID();
-  const user = {
-    userId,
-    userName: `Guest ${userId.slice(0, 4).toUpperCase()}`,
-    color: colorFromId(userId),
-  };
-
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  return user;
-}
-
 export function useDocumentPresence(documentId: string) {
+  const { user } = useSession();
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!documentId) return;
+    // اگر شناسه سند یا کاربر لاگین‌شده وجود نداشت، سابسکرایب نشود
+    if (!documentId || !user) return;
 
-    const currentUser = getOrCreatePresenceUser();
+    const currentUser: PresenceUser = {
+      userId: user.id,
+      userName: user.displayName || user.email.split("@")[0] || "Collaborator",
+      color: colorFromId(user.id),
+      lastSeen: Date.now(),
+    };
+
     const channel = supabase.channel(`document:${documentId}`, {
       config: {
-        presence: { key: currentUser.userId },
+        presence: { key: user.id },
       },
     });
 
@@ -73,7 +49,7 @@ export function useDocumentPresence(documentId: string) {
       const uniqueUsers = new Map<string, PresenceUser>();
 
       for (const presence of Object.values(presenceState).flat()) {
-        if (presence.userId) {
+        if (presence?.userId) {
           uniqueUsers.set(presence.userId, {
             userId: presence.userId,
             userName: presence.userName,
@@ -95,9 +71,10 @@ export function useDocumentPresence(documentId: string) {
       .on("presence", { event: "join" }, syncPresence)
       .on("presence", { event: "leave" }, syncPresence)
       .subscribe((status) => {
-        setIsConnected(status === "SUBSCRIBED");
+        const isSubscribed = status === "SUBSCRIBED";
+        setIsConnected(isSubscribed);
 
-        if (status === "SUBSCRIBED") {
+        if (isSubscribed) {
           void channel.track({
             ...currentUser,
             lastSeen: Date.now(),
@@ -111,7 +88,7 @@ export function useDocumentPresence(documentId: string) {
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [documentId]);
+  }, [documentId, user?.id, user?.displayName, user?.email]);
 
   return { onlineUsers, isConnected };
 }
