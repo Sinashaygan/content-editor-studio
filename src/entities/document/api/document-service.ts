@@ -1,10 +1,6 @@
-import { Database, Json } from "@/shared/types/database";
+import { DocumentInsert, DocumentRow, DocumentUpdate, Json } from "@/shared/types/database";
 import { Document, TiptapContent } from "../model/types";
 import { supabase } from "@/shared/api/supabase";
-
-type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
-type DocumentInsert = Database["public"]["Tables"]["documents"]["Insert"];
-type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
 
 const mapRowToDocument = (row: DocumentRow): Document => ({
   id: row.id,
