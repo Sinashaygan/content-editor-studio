@@ -5,6 +5,18 @@ import { getSupabaseEnv } from "@/shared/api/supabase";
 const PUBLIC_ROUTES = ["/login", "/register", "/auth"];
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Static assets must remain public; otherwise unauthenticated requests for
+  // CSS/JS are redirected to /login and the page renders as unstyled HTML.
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/favicon/")
+  ) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
   const { url, anonKey } = getSupabaseEnv();
 
@@ -28,7 +40,6 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_ROUTES.some((p) => pathname.startsWith(p));
 
   // ریدایرکت کاربر لاگین‌نکرده
