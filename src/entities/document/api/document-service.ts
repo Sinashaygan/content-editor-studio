@@ -54,7 +54,7 @@ export const documentService = {
 
     const { data, error } = await supabase
       .from("documents")
-      .insert(insertPayload as any) // جلوگیری از ts(2353) در صورت mismatch تایپ سوپابیس
+      .insert(insertPayload as any)
       .select()
       .single();
 
@@ -80,7 +80,7 @@ export const documentService = {
 
     const { data, error } = await supabase
       .from("documents")
-      .update(updatePayload as any) // جلوگیری از ts(2345)
+      .update(updatePayload as any) 
       .match({ id, version: expectedVersion })
       .select()
       .maybeSingle();
