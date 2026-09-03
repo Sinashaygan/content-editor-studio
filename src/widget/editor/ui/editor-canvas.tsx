@@ -13,6 +13,7 @@ import type {
   TiptapContent,
 } from "@/entities/document/model/types";
 import { PresenceAvatars } from "./presence-avatars";
+import { VersionHistoryPanel } from "@/widget/version-history/ui/version-history-panel";
 
 interface EditorCanvasProps {
   initialDocument: Document;
@@ -31,6 +32,7 @@ const SAVED_STATUS_DURATION = 2_500;
 
 export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const [title, setTitle] = useState(initialDocument.title);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [content, setContent] = useState<TiptapContent>(
     initialDocument.content,
   );
@@ -246,6 +248,49 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     return labels[saveStatus];
   }, [isDirty, saveStatus]);
 
+  const handleRestored = useCallback(
+    (restored: Document) => {
+      // 1) دیبانس در حال انتظار را لغو کن تا محتوای قبلی روی نسخه بازگردانی‌شده نریزد
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+
+      // 2) محتوا را بدون emitUpdate ست کن، سپس JSON نرمال‌شده خودِ ادیتور را مرجع بگیر
+      let normalizedContent: TiptapContent = restored.content;
+
+      if (editor) {
+        editor.commands.setContent(restored.content, { emitUpdate: false });
+        normalizedContent = editor.getJSON() as TiptapContent;
+      }
+
+      const serialized = JSON.stringify(normalizedContent);
+
+      // 3) refs (مسیر همگام performSave)
+      titleRef.current = restored.title;
+      serializedContentRef.current = serialized;
+      versionRef.current = restored.version;
+      lastSavedRef.current = {
+        title: restored.title,
+        serializedContent: serialized,
+      };
+
+      // 4) state (مسیر رندر) — با ست شدن snapshot، isDirty خودکار false می‌شود
+      setTitle(restored.title);
+      setContent(normalizedContent);
+      setCurrentVersion(restored.version);
+      setLastSavedSnapshot({
+        title: restored.title,
+        serializedContent: serialized,
+      });
+      setConflictError(null);
+      showSavedStatus();
+    },
+    [editor, showSavedStatus],
+  );
+
+
+
   return (
     <div className="space-y-4">
       {conflictError && (
@@ -276,10 +321,15 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
         />
 
         <div className="flex items-center justify-between gap-4 sm:justify-end">
-          <PresenceAvatars
-            users={onlineUsers}
-            isConnected={isConnected}
-          />
+          <PresenceAvatars users={onlineUsers} isConnected={isConnected} />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsHistoryOpen(true)}
+          >
+            History
+          </Button>
 
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -288,9 +338,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
               </p>
               <p
                 className={`text-xs ${
-                  saveStatus === "error"
-                    ? "text-red-600"
-                    : "text-neutral-500"
+                  saveStatus === "error" ? "text-red-600" : "text-neutral-500"
                 }`}
                 aria-live="polite"
               >
@@ -315,6 +363,15 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           className="prose max-w-none focus:outline-none"
         />
       </div>
+
+      {isHistoryOpen && (
+        <VersionHistoryPanel
+          documentId={initialDocument.id}
+          currentVersion={currentVersion}
+          onClose={() => setIsHistoryOpen(false)}
+          onRestored={handleRestored}
+        />
+      )}
     </div>
   );
 }
