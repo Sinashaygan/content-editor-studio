@@ -36,6 +36,33 @@ export interface Database {
         };
         Relationships: [];
       };
+
+      document_versions: {
+        Row: {
+          id: string;
+          document_id: string;
+          version: number;
+          title: string;
+          content: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          version: number;
+          title: string;
+          content: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          version?: number;
+          title?: string;
+          content?: Json;
+          created_at?: string;
+        };
+      };
     };
 
     Views: {
