@@ -33,3 +33,24 @@ export interface SaveConflict {
   serverVersion: number;
   serverContent: TiptapContent;
 }
+
+export type UpdateDocumentResult =
+  | { success: true; data: Document }
+  | {
+      success: false;
+      conflict: true;
+      forbidden?: false;
+      currentDoc: Document | null;
+    }
+  | {
+      success: false;
+      conflict: false;
+      forbidden: true;
+      currentDoc: null;
+    }
+  | {
+      success: false;
+      conflict: false;
+      forbidden?: false;
+      error: string;
+    };

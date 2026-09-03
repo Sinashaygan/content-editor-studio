@@ -1,10 +1,15 @@
-import { Database, Json } from "@/shared/types/database";
-import { Document, TiptapContent } from "../model/types";
+import {
+  DocumentInsert,
+  DocumentRow,
+  DocumentUpdate,
+  Json,
+} from "@/shared/types/database";
+import {
+  Document,
+  TiptapContent,
+  UpdateDocumentResult,
+} from "../model/types";
 import { supabase } from "@/shared/api/supabase";
-
-type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
-type DocumentInsert = Database["public"]["Tables"]["documents"]["Insert"];
-type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
 
 const mapRowToDocument = (row: DocumentRow): Document => ({
   id: row.id,
@@ -54,7 +59,7 @@ export const documentService = {
 
     const { data, error } = await supabase
       .from("documents")
-      .insert(insertPayload as any)
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -62,37 +67,62 @@ export const documentService = {
     return mapRowToDocument(data as DocumentRow);
   },
 
-  async updateWithOptimisticLock(
-    id: string,
-    expectedVersion: number,
-    updates: { title?: string; content?: TiptapContent },
-  ): Promise<
-    | { success: true; data: Document }
-    | { success: false; conflict: true; currentDoc: Document | null }
-  > {
-    const updatePayload: DocumentUpdate = {
-      ...(updates.title !== undefined ? { title: updates.title } : {}),
-      ...(updates.content !== undefined
-        ? { content: updates.content as unknown as Json }
-        : {}),
-      version: expectedVersion + 1,
-    };
-
+  async updateWithOptimisticLock(params: {
+    id: string;
+    expectedVersion: number;
+    updates: DocumentUpdate;
+  }): Promise<UpdateDocumentResult> {
+    const { id, expectedVersion, updates } = params;
     const { data, error } = await supabase
       .from("documents")
-      .update(updatePayload as any) 
+      .update({
+        ...updates,
+        version: expectedVersion + 1,
+        updated_at: new Date().toISOString(),
+      })
       .match({ id, version: expectedVersion })
       .select()
       .maybeSingle();
 
-    if (error) throw new Error(error.message);
-
-    if (!data) {
-      const currentDoc = await this.getById(id);
-      return { success: false, conflict: true, currentDoc };
+    if (error) {
+      return { success: false, conflict: false, error: error.message };
     }
 
-    return { success: true, data: mapRowToDocument(data as DocumentRow) };
+    if (data) {
+      return {
+        success: true,
+        data: mapRowToDocument(data as DocumentRow),
+      };
+    }
+
+    const { data: current, error: currentError } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (currentError) {
+      return {
+        success: false,
+        conflict: false,
+        error: currentError.message,
+      };
+    }
+
+    if (!current) {
+      return {
+        success: false,
+        conflict: false,
+        forbidden: true,
+        currentDoc: null,
+      };
+    }
+
+    return {
+      success: false,
+      conflict: true,
+      currentDoc: mapRowToDocument(current as DocumentRow),
+    };
   },
 
   async delete(id: string): Promise<void> {

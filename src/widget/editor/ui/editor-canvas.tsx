@@ -14,6 +14,7 @@ import type {
 } from "@/entities/document/model/types";
 import { PresenceAvatars } from "./presence-avatars";
 import { VersionHistoryPanel } from "@/widget/version-history/ui/version-history-panel";
+import type { Json } from "@/shared/types/database";
 
 interface EditorCanvasProps {
   initialDocument: Document;
@@ -148,19 +149,25 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
             expectedVersion: versionRef.current,
             updates: {
               title: snapshot.title,
-              content: JSON.parse(
-                snapshot.serializedContent,
-              ) as TiptapContent,
+              content: JSON.parse(snapshot.serializedContent) as unknown as Json,
             },
           });
 
           if (!result.success) {
-            const serverVersion = result.currentDoc?.version;
-            setConflictError(
-              serverVersion
-                ? `Version conflict detected! The server is at v${serverVersion}, while this editor is based on v${versionRef.current}. Reload the server version before continuing.`
-                : "Version conflict detected! This document may have been deleted or updated elsewhere.",
-            );
+            if (result.forbidden) {
+              setConflictError(
+                "You do not have permission to update this document, or it no longer exists.",
+              );
+            } else if (result.conflict) {
+              const serverVersion = result.currentDoc?.version;
+              setConflictError(
+                serverVersion
+                  ? `Version conflict detected! The server is at v${serverVersion}, while this editor is based on v${versionRef.current}. Reload the server version before continuing.`
+                  : "Version conflict detected! This document may have been deleted or updated elsewhere.",
+              );
+            } else {
+              setConflictError(result.error);
+            }
             setSaveStatus("error");
             break;
           }

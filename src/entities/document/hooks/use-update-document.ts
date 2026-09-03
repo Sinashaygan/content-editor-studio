@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { TiptapContent } from "../model/types";
+import { DocumentUpdate } from "@/shared/types/database";
 import { documentService } from "../api/document-service";
 import { documentKeys } from "./queries";
 
@@ -14,9 +14,13 @@ export function useUpdateDocument() {
     }: {
       id: string;
       expectedVersion: number;
-      updates: { title?: string; content?: TiptapContent };
+      updates: DocumentUpdate;
     }) =>
-      documentService.updateWithOptimisticLock(id, expectedVersion, updates),
+      documentService.updateWithOptimisticLock({
+        id,
+        expectedVersion,
+        updates,
+      }),
     onSuccess: (result, variables) => {
       if (result.success) {
         queryClient.setQueryData(
