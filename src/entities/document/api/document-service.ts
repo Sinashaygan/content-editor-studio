@@ -2,9 +2,11 @@ import { Database, Json } from "@/shared/types/database";
 import { Document, TiptapContent } from "../model/types";
 import { supabase } from "@/shared/api/supabase";
 
-type documentRow = Database["public"]["Tables"]["documents"]["Row"];
+type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
+type DocumentInsert = Database["public"]["Tables"]["documents"]["Insert"];
+type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
 
-const mapRowToDocument = (row: documentRow): Document => ({
+const mapRowToDocument = (row: DocumentRow): Document => ({
   id: row.id,
   title: row.title,
   content: (row.content as unknown as TiptapContent) || {
@@ -27,7 +29,7 @@ export const documentService = {
     if (error) throw new Error(error.message);
     if (!data) return null;
 
-    return mapRowToDocument(data);
+    return mapRowToDocument(data as DocumentRow);
   },
 
   async getAll(): Promise<Document[]> {
@@ -37,25 +39,27 @@ export const documentService = {
       .order("updated_at", { ascending: false });
 
     if (error) throw new Error(error.message);
-    return (data ?? []).map(mapRowToDocument);
+    return ((data ?? []) as DocumentRow[]).map(mapRowToDocument);
   },
 
   async create(
     title: string,
     content: TiptapContent = { type: "doc", content: [] },
   ): Promise<Document> {
+    const insertPayload: DocumentInsert = {
+      title,
+      content: content as unknown as Json,
+      version: 1,
+    };
+
     const { data, error } = await supabase
       .from("documents")
-      .insert({
-        title,
-        content: content as unknown as Json,
-        version: 1,
-      })
+      .insert(insertPayload as any) // جلوگیری از ts(2353) در صورت mismatch تایپ سوپابیس
       .select()
       .single();
 
     if (error) throw new Error(error.message);
-    return mapRowToDocument(data);
+    return mapRowToDocument(data as DocumentRow);
   },
 
   async updateWithOptimisticLock(
@@ -66,15 +70,17 @@ export const documentService = {
     | { success: true; data: Document }
     | { success: false; conflict: true; currentDoc: Document | null }
   > {
+    const updatePayload: DocumentUpdate = {
+      ...(updates.title !== undefined ? { title: updates.title } : {}),
+      ...(updates.content !== undefined
+        ? { content: updates.content as unknown as Json }
+        : {}),
+      version: expectedVersion + 1,
+    };
+
     const { data, error } = await supabase
       .from("documents")
-      .update({
-        ...(updates.title !== undefined ? { title: updates.title } : {}),
-        ...(updates.content !== undefined
-          ? { content: updates.content as unknown as Json }
-          : {}),
-        version: expectedVersion + 1,
-      })
+      .update(updatePayload as any) // جلوگیری از ts(2345)
       .match({ id, version: expectedVersion })
       .select()
       .maybeSingle();
@@ -86,7 +92,7 @@ export const documentService = {
       return { success: false, conflict: true, currentDoc };
     }
 
-    return { success: true, data: mapRowToDocument(data) };
+    return { success: true, data: mapRowToDocument(data as DocumentRow) };
   },
 
   async delete(id: string): Promise<void> {
