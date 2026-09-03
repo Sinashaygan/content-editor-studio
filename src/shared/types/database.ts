@@ -248,3 +248,11 @@ export const Constants = {
     Enums: {},
   },
 } as const;
+
+export type DocumentRow = Tables<"documents">;
+export type DocumentInsert = TablesInsert<"documents">;
+export type DocumentUpdate = TablesUpdate<"documents">;
+
+export type DocumentVersionRow = Tables<"document_versions">;
+export type DocumentVersionInsert = TablesInsert<"document_versions">;
+export type DocumentVersionUpdate = TablesUpdate<"document_versions">;
