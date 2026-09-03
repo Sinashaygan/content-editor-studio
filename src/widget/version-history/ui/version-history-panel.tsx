@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { useDocumentVersions } from "@/entities/document-version/hooks/use-document-versions";
-import { DocumentVersion, MAX_VERSIONS_PER_DOCUMENT } from "@/entities/document-version/model/type";
+import {
+  DocumentVersion,
+  MAX_VERSIONS_PER_DOCUMENT,
+} from "@/entities/document-version/model/type";
 import { Document } from "@/entities/document/model/types";
 import { useRestoreVersion } from "@/features/restore-version/hooks/use-restore-version";
 import { useState } from "react";
@@ -66,6 +69,74 @@ export function VersionHistoryPanel({
           Close
         </Button>
       </header>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="mb-3 rounded-md border border-dashed px-3 py-2 text-xs">
+          Current Version:{" "}
+          <span className="font-medium">v{currentVersion}</span>
+        </div>
+
+        {isPending && (
+          <p className="text-sm text-muted-foreground">Loading versions...</p>
+        )}
+
+        {error && (
+          <p className="text-sm text-destructive">
+            Failed to load history: {error.message}
+          </p>
+        )}
+
+        {conflictMessage && (
+          <p className="mb-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+            {conflictMessage}
+          </p>
+        )}
+
+        {versions?.length === 0 && !isPending && (
+          <p className="text-sm text-muted-foreground">
+            No versions saved yet. Versions are created automatically upon
+            edits.
+          </p>
+        )}
+
+        {versions && versions.length > 0 && (
+          <ul className="space-y-3">
+            {versions.map((version) => (
+              <li key={version.id} className="rounded-md border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    v{version.version}
+                  </span>
+                  <time
+                    className="text-xs text-muted-foreground"
+                    dateTime={
+                      typeof version.createdAt === "string"
+                        ? version.createdAt
+                        : new Date(version.createdAt).toISOString()
+                    }
+                  >
+                    {dateFormatter.format(new Date(version.createdAt))}
+                  </time>
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {version.title || "Untitled Document"}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 w-full"
+                  disabled={restoreVersion.isPending}
+                  onClick={() => handleRestore(version)}
+                >
+                  {restoreVersion.isPending
+                    ? "Restoring..."
+                    : "Restore this version"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </aside>
   );
 }
