@@ -88,12 +88,13 @@ export default function DocumentEditorPage({
             </Alert>
           </CardContent>
           <CardFooter className="flex justify-center gap-3">
-            <Button variant="outline" asChild>
-              <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Dashboard
-              </Link>
-            </Button>
+            <Link
+              href="/"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Link>
             {error && (
               <Button variant="default" onClick={() => void refetch()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -110,17 +111,13 @@ export default function DocumentEditorPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
       <div className="flex items-center justify-between border-b pb-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="gap-2 text-muted-foreground hover:text-foreground"
+        <Link
+          href="/"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <Link href="/">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Link>
-        </Button>
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Link>
       </div>
 
       <main className="transition-all duration-200">
