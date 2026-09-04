@@ -49,4 +49,5 @@ export async function proxy(request: NextRequest) {
     redirectUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(redirectUrl);
   }
+  return response;
 }

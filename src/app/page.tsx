@@ -4,6 +4,7 @@ import { useDeleteDocument } from "@/entities/document/hooks/use-delete-document
 import { useDocuments } from "@/entities/document/hooks/use-documents";
 import { CreateDocumentSection } from "@/entities/document/ui/create-document-dialog";
 import { DocumentCard } from "@/entities/document/ui/document-card";
+import { SignoutButton } from "@/features/auth/ui/signout-button";
 export default function HomePage() {
   const { data: documents, isLoading, error } = useDocuments();
   const deleteMutation = useDeleteDocument();
@@ -17,7 +18,10 @@ export default function HomePage() {
   return (
     <main className="max-w-5xl mx-auto p-6 md:p-12">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Content CMS</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Content CMS</h1>
+          <SignoutButton />
+        </div>
         <p className="text-neutral-500">
           Educational editor with Concurrency Control and Tiptap Integration.
         </p>
