@@ -1,13 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { useSession } from "../hooks/use-session";
-import { authService } from "@/features/auth/api/auth-service";
+import { SignoutButton } from "@/features/auth/ui/signout-button";
 
 export function UserMenu() {
   const { user } = useSession();
-  const router = useRouter();
 
   if (!user) return null;
 
@@ -22,17 +19,7 @@ export function UserMenu() {
       <span className="text-sm font-medium text-muted-foreground hidden sm:inline">
         {user.displayName}
       </span>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={async () => {
-          await authService.signOut();
-          router.replace("/login");
-          router.refresh();
-        }}
-      >
-        Sign out
-      </Button>
+      <SignoutButton />
     </div>
   );
 }
