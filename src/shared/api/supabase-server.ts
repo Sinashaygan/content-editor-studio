@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/shared/types/database";
 import { getSupabaseEnv } from "./supabase";
+import { redirect } from "next/navigation";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -23,4 +24,11 @@ export async function createSupabaseServerClient() {
       },
     },
   });
+}
+
+export async function requireUser() {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) redirect("/login");
+  return data.user;
 }
