@@ -4,17 +4,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDocumentPresence } from "@/entities/document/hooks/use-document-presence";
 import { useUpdateDocument } from "@/entities/document/hooks/use-update-document";
-import type {
-  Document,
-  TiptapContent,
-} from "@/entities/document/model/types";
+import type { Document, TiptapContent } from "@/entities/document/model/types";
 import { PresenceAvatars } from "./presence-avatars";
 import { VersionHistoryPanel } from "@/widget/version-history/ui/version-history-panel";
 import type { Json } from "@/shared/types/database";
+import { SlashCommands } from "../lib/tiptap/slash-commands";
+import { ImageUploadDialog } from "./image-upload-dialog";
+import { SignoutButton } from "@/features/auth/ui/signout-button";
 
 interface EditorCanvasProps {
   initialDocument: Document;
@@ -34,12 +41,11 @@ const SAVED_STATUS_DURATION = 2_500;
 export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const [title, setTitle] = useState(initialDocument.title);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [content, setContent] = useState<TiptapContent>(
     initialDocument.content,
   );
-  const [currentVersion, setCurrentVersion] = useState(
-    initialDocument.version,
-  );
+  const [currentVersion, setCurrentVersion] = useState(initialDocument.version);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<SavedSnapshot>({
@@ -48,9 +54,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   });
 
   const titleRef = useRef(initialDocument.title);
-  const serializedContentRef = useRef(
-    JSON.stringify(initialDocument.content),
-  );
+  const serializedContentRef = useRef(JSON.stringify(initialDocument.content));
   const lastSavedRef = useRef<SavedSnapshot>({
     title: initialDocument.title,
     serializedContent: JSON.stringify(initialDocument.content),
@@ -63,13 +67,19 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     null,
   );
   const { mutateAsync: updateDocument } = useUpdateDocument();
-  const { onlineUsers, isConnected } = useDocumentPresence(
-    initialDocument.id,
-  );
+  const { onlineUsers, isConnected } = useDocumentPresence(initialDocument.id);
 
   const editor = useEditor({
     extensions: [
       StarterKit,
+      Image.configure({ inline: false, allowBase64: false }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      SlashCommands,
       Placeholder.configure({
         placeholder: "Start writing your document here...",
       }),
@@ -139,9 +149,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
 
           clearSavedStatusTimer();
           setConflictError(null);
-          setSaveStatus(
-            nextMode === "manual" ? "saving" : "auto-saving",
-          );
+          setSaveStatus(nextMode === "manual" ? "saving" : "auto-saving");
           queuedManualSaveRef.current = false;
 
           const result = await updateDocument({
@@ -149,7 +157,9 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
             expectedVersion: versionRef.current,
             updates: {
               title: snapshot.title,
-              content: JSON.parse(snapshot.serializedContent) as unknown as Json,
+              content: JSON.parse(
+                snapshot.serializedContent,
+              ) as unknown as Json,
             },
           });
 
@@ -296,8 +306,6 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     [editor, showSavedStatus],
   );
 
-
-
   return (
     <div className="space-y-4">
       {conflictError && (
@@ -329,6 +337,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
 
         <div className="flex items-center justify-between gap-4 sm:justify-end">
           <PresenceAvatars users={onlineUsers} isConnected={isConnected} />
+          <SignoutButton />
 
           <Button
             variant="outline"
@@ -360,10 +369,38 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
             >
               {saveStatus === "saving" ? "Saving..." : "Save"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => editor?.chain().focus().toggleTaskList().run()}
+            >
+              Task list
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                editor
+                  ?.chain()
+                  .focus()
+                  .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                  .run()
+              }
+            >
+              Insert table
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsImageDialogOpen(true)}
+            >
+              Image
+            </Button>
           </div>
         </div>
       </div>
 
+      <p className="text-xs text-neutral-500">Tip: type / to open commands.</p>
       <div className="min-h-[450px] rounded-lg border bg-white p-6 shadow-sm focus-within:ring-1 focus-within:ring-neutral-400">
         <EditorContent
           editor={editor}
@@ -377,6 +414,14 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           currentVersion={currentVersion}
           onClose={() => setIsHistoryOpen(false)}
           onRestored={handleRestored}
+        />
+      )}
+      {isImageDialogOpen && editor && (
+        <ImageUploadDialog
+          onClose={() => setIsImageDialogOpen(false)}
+          onInsert={(url, alt) =>
+            editor.chain().focus().setImage({ src: url, alt }).run()
+          }
         />
       )}
     </div>
