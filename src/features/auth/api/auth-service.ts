@@ -1,6 +1,7 @@
 import { supabase } from "@/shared/api/supabase";
 import type { User } from "@supabase/supabase-js";
-import { AuthCredentials, SessionUser } from "../model/type";
+import type { AuthCredentials } from "../model/type";
+import type { SessionUser } from "@/entities/session/model/types";
 
 export function mapUser(user: User | null): SessionUser | null {
   if (!user) return null;
