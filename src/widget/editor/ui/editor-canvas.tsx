@@ -2,19 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import Placeholder from "@tiptap/extension-placeholder";
-import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
-import { Table } from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
-import Link from "@tiptap/extension-link";
-import Underline from "@tiptap/extension-underline";
-import Highlight from "@tiptap/extension-highlight";
-import TextAlign from "@tiptap/extension-text-align";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDocumentPresence } from "@/entities/document/hooks/use-document-presence";
@@ -23,11 +10,14 @@ import type { Document, TiptapContent } from "@/entities/document/model/types";
 import { PresenceAvatars } from "./presence-avatars";
 import { VersionHistoryPanel } from "@/widget/version-history/ui/version-history-panel";
 import type { Json } from "@/shared/types/database";
-import { SlashCommands } from "../lib/tiptap/slash-commands";
+import { createEditorExtensions } from "../lib/tiptap/extensions";
 import { ImageUploadDialog } from "./image-upload-dialog";
 import { SignoutButton } from "@/features/auth/ui/signout-button";
 import { EditorToolbar } from "./toolbar";
 import { EditorBubbleMenu } from "./bubble-menu";
+import { AUTOSAVE_DELAY, SAVED_STATUS_DURATION } from "@/features/save-document/model/constants";
+import { SaveQueue } from "@/features/save-document/model/save-queue";
+import { classifySaveError } from "@/features/save-document/model/types";
 
 interface EditorCanvasProps {
   initialDocument: Document;
@@ -40,9 +30,6 @@ interface SavedSnapshot {
   title: string;
   serializedContent: string;
 }
-
-const AUTOSAVE_DELAY = 2_000;
-const SAVED_STATUS_DURATION = 2_500;
 
 export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const [title, setTitle] = useState(initialDocument.title);
@@ -66,8 +53,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
     serializedContent: JSON.stringify(initialDocument.content),
   });
   const versionRef = useRef(initialDocument.version);
-  const saveInFlightRef = useRef(false);
-  const queuedManualSaveRef = useRef(false);
+  const saveQueueRef = useRef(new SaveQueue());
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -76,41 +62,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const { onlineUsers, isConnected } = useDocumentPresence(initialDocument.id);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        HTMLAttributes: {
-          rel: "noopener noreferrer nofollow",
-          target: "_blank",
-        },
-      }),
-      Underline,
-      Highlight.configure({ multicolor: false }),
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Image.configure({
-        inline: false,
-        allowBase64: false,
-        resize: {
-          enabled: true,
-          minWidth: 80,
-          minHeight: 80,
-          alwaysPreserveAspectRatio: true,
-        },
-      }),
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      SlashCommands,
-      Placeholder.configure({
-        placeholder: "Start writing your document here...",
-      }),
-    ],
+    extensions: createEditorExtensions(),
     content: initialDocument.content,
     immediatelyRender: false,
     onUpdate: ({ editor: currentEditor }) => {
@@ -147,14 +99,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
 
   const performSave = useCallback(
     async (mode: SaveMode) => {
-      if (saveInFlightRef.current) {
-        if (mode === "manual") {
-          queuedManualSaveRef.current = true;
-        }
-        return;
-      }
-
-      saveInFlightRef.current = true;
+      if (!saveQueueRef.current.request(mode)) return;
 
       try {
         let nextMode: SaveMode | null = mode;
@@ -177,7 +122,6 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           clearSavedStatusTimer();
           setConflictError(null);
           setSaveStatus(nextMode === "manual" ? "saving" : "auto-saving");
-          queuedManualSaveRef.current = false;
 
           const result = await updateDocument({
             id: initialDocument.id,
@@ -191,20 +135,8 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           });
 
           if (!result.success) {
-            if (result.forbidden) {
-              setConflictError(
-                "You do not have permission to update this document, or it no longer exists.",
-              );
-            } else if (result.conflict) {
-              const serverVersion = result.currentDoc?.version;
-              setConflictError(
-                serverVersion
-                  ? `Version conflict detected! The server is at v${serverVersion}, while this editor is based on v${versionRef.current}. Reload the server version before continuing.`
-                  : "Version conflict detected! This document may have been deleted or updated elsewhere.",
-              );
-            } else {
-              setConflictError(result.error);
-            }
+            const classified = classifySaveError(result);
+            setConflictError(classified?.message ?? "Failed to save changes.");
             setSaveStatus("error");
             break;
           }
@@ -215,7 +147,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           setLastSavedSnapshot(snapshot);
           showSavedStatus();
 
-          nextMode = queuedManualSaveRef.current ? "manual" : null;
+          nextMode = saveQueueRef.current.finish();
         }
       } catch (error) {
         setSaveStatus("error");
@@ -223,7 +155,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
           error instanceof Error ? error.message : "Failed to save changes.",
         );
       } finally {
-        saveInFlightRef.current = false;
+        if (saveQueueRef.current.isInFlight) saveQueueRef.current.clear();
       }
     },
     [
@@ -235,7 +167,7 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   );
 
   useEffect(() => {
-    if (!isDirty || conflictError || saveInFlightRef.current) return;
+    if (!isDirty || conflictError || saveQueueRef.current.isInFlight) return;
 
     autosaveTimerRef.current = setTimeout(() => {
       autosaveTimerRef.current = null;
