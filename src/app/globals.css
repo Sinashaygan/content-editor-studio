@@ -28,6 +28,7 @@ body {
 .tiptap {
   min-height: 400px;
   outline: none;
+  color: #0a0a0a;
 }
 
 .tiptap p.is-editor-empty:first-child::before {
