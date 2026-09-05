@@ -15,8 +15,8 @@ export function ImageUploadDialog({
   const [alt, setAlt] = useState("");
   const upload = useAssetUpload();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4">
-      <div className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl">
+    <div className="fixed inset-0 z-50 grid place-items-center p-4">
+      <div className="w-full max-w-md space-y-3 rounded-lg bg-black p-5 shadow-xl">
         <h2 className="font-semibold">Insert image</h2>
         <Input
           type="file"
