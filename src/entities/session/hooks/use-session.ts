@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/shared/api/supabase";
-import { SessionUser } from "@/features/auth/model/type";
+import type { SessionUser } from "../model/types";
 import { authService, mapUser } from "@/features/auth/api/auth-service";
 
 export const sessionKeys = { current: ["session", "current"] as const };
