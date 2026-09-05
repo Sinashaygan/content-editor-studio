@@ -11,6 +11,10 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import Link from "@tiptap/extension-link";
+import Underline from "@tiptap/extension-underline";
+import Highlight from "@tiptap/extension-highlight";
+import TextAlign from "@tiptap/extension-text-align";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDocumentPresence } from "@/entities/document/hooks/use-document-presence";
@@ -22,6 +26,8 @@ import type { Json } from "@/shared/types/database";
 import { SlashCommands } from "../lib/tiptap/slash-commands";
 import { ImageUploadDialog } from "./image-upload-dialog";
 import { SignoutButton } from "@/features/auth/ui/signout-button";
+import { EditorToolbar } from "./toolbar";
+import { EditorBubbleMenu } from "./bubble-menu";
 
 interface EditorCanvasProps {
   initialDocument: Document;
@@ -72,8 +78,29 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Image.configure({ inline: false, allowBase64: false }),
-      Table.configure({ resizable: false }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        HTMLAttributes: {
+          rel: "noopener noreferrer nofollow",
+          target: "_blank",
+        },
+      }),
+      Underline,
+      Highlight.configure({ multicolor: false }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Image.configure({
+        inline: false,
+        allowBase64: false,
+        resize: {
+          enabled: true,
+          minWidth: 80,
+          minHeight: 80,
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
+      Table.configure({ resizable: true }),
       TableRow,
       TableCell,
       TableHeader,
@@ -369,39 +396,18 @@ export function EditorCanvas({ initialDocument }: EditorCanvasProps) {
             >
               {saveStatus === "saving" ? "Saving..." : "Save"}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => editor?.chain().focus().toggleTaskList().run()}
-            >
-              Task list
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                  .run()
-              }
-            >
-              Insert table
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsImageDialogOpen(true)}
-            >
-              Image
-            </Button>
+            
           </div>
         </div>
       </div>
 
       <p className="text-xs text-neutral-500">Tip: type / to open commands.</p>
+      <EditorToolbar
+        editor={editor}
+        onImage={() => setIsImageDialogOpen(true)}
+      />
       <div className="min-h-[450px] rounded-lg border bg-white p-6 shadow-sm focus-within:ring-1 focus-within:ring-neutral-400">
+        <EditorBubbleMenu editor={editor} />
         <EditorContent
           editor={editor}
           className="prose max-w-none focus:outline-none"
